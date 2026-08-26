@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Ticket, Calendar, Clock, CheckCircle2, AlertCircle, AlertTriangle, X, Trash2 } from 'lucide-react';
+import { Ticket, Calendar, Clock, CheckCircle2, AlertCircle, AlertTriangle, Trash2, X } from 'lucide-react';
 import { apiFetch } from '../api/client';
 
 export function MyBookingsPage() {
@@ -10,6 +10,22 @@ export function MyBookingsPage() {
   const [confirmModalBookingId, setConfirmModalBookingId] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Auto-dismiss success notification banner after 3.5 seconds
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(''), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
+  // Auto-dismiss error notification banner after 4.5 seconds
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(''), 4500);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
 
   const fetchBookings = useCallback(async () => {
     setLoading(true);
@@ -129,9 +145,19 @@ export function MyBookingsPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             className="alert alert-error"
+            style={{ justifyContent: 'space-between' }}
           >
-            <AlertCircle className="w-5 h-5 flex-shrink-0" />
-            <span>{error}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setError('')}
+              style={{ background: 'none', border: 'none', color: 'currentColor', cursor: 'pointer', opacity: 0.8 }}
+            >
+              <X className="w-4 h-4" />
+            </button>
           </motion.div>
         )}
 
@@ -142,9 +168,19 @@ export function MyBookingsPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             className="alert alert-success"
+            style={{ justifyContent: 'space-between' }}
           >
-            <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-            <span>{success}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+              <span>{success}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSuccess('')}
+              style={{ background: 'none', border: 'none', color: 'currentColor', cursor: 'pointer', opacity: 0.8 }}
+            >
+              <X className="w-4 h-4" />
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -225,12 +261,12 @@ export function MyBookingsPage() {
                       whileHover={{ scale: 1.03 }}
                       whileTap={{ scale: 0.97 }}
                       onClick={() => openCancelModal(booking.id)}
-                      className="btn btn-danger btn-sm"
+                      className="btn btn-danger btn-cancel-compact"
                       disabled={isCancellingThis}
                     >
                       {isCancellingThis ? (
                         <>
-                          <div className="spinner w-3.5 h-3.5 border-2" />
+                          <div className="spinner w-3 h-3 border-2" />
                           <span>Cancelling...</span>
                         </>
                       ) : (

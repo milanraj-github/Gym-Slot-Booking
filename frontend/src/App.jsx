@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { ProtectedRoute, PublicOnlyRoute } from './components/ProtectedRoute';
+import { SlotGuardIntro } from './components/SlotGuardIntro';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { SlotsPage } from './pages/SlotsPage';
@@ -12,23 +13,27 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <div className="ambient-background">
-          <div className="glow-orb glow-orb-1" />
-          <div className="glow-orb glow-orb-2" />
-          <div className="glow-orb glow-orb-3" />
+        {/* 2-Second SlotGuard Aurora Intro Splash Screen */}
+        <SlotGuardIntro />
+
+        {/* Dynamic Aurora Waves Background Canvas */}
+        <div className="aurora-background">
+          <div className="aurora-wave aurora-wave-1" />
+          <div className="aurora-wave aurora-wave-2" />
+          <div className="aurora-wave aurora-wave-3" />
         </div>
 
         <div className="app-layout">
           <Navbar />
           <main className="main-content">
             <Routes>
-              {/* Public Routes (redirect to /slots if logged in) */}
+              {/* Public Auth Routes */}
               <Route element={<PublicOnlyRoute />}>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
               </Route>
 
-              {/* Protected Routes (redirect to /login if not logged in) */}
+              {/* Protected Member Routes */}
               <Route element={<ProtectedRoute />}>
                 <Route path="/slots" element={<SlotsPage />} />
                 <Route path="/bookings" element={<MyBookingsPage />} />

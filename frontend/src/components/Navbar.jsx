@@ -19,8 +19,9 @@ export function Navbar() {
           <div className="brand-icon-wrapper">
             <Dumbbell className="w-5 h-5" />
           </div>
-          <span className="brand-text">Gym Booking</span>
-          <span className="brand-badge">PRO</span>
+          <span className="brand-text">
+            Slot<span style={{ background: 'linear-gradient(135deg, #10b981 0%, #06b6d4 50%, #8b5cf6 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Guard</span>
+          </span>
         </Link>
 
         <nav className="nav-links">

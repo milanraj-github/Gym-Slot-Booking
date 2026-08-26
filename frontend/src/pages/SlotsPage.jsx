@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calendar, Clock, CheckCircle2, AlertCircle, Sparkles, Check, Flame } from 'lucide-react';
+import { Calendar, Clock, CheckCircle2, AlertCircle, Sparkles, Check, Flame, X } from 'lucide-react';
 import { apiFetch } from '../api/client';
 
 export function SlotsPage() {
@@ -12,8 +12,24 @@ export function SlotsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const fetchSlotsAndBookings = useCallback(async (date) => {
-    setLoading(true);
+  // Auto-dismiss success banner after 3.5 seconds
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(''), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
+  // Auto-dismiss error banner after 4.5 seconds
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(''), 4500);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  const fetchSlotsAndBookings = useCallback(async (date, showLoading = true) => {
+    if (showLoading) setLoading(true);
     setError('');
     try {
       const slotsData = await apiFetch(`/api/slots?date=${date}`);
@@ -34,12 +50,12 @@ export function SlotsPage() {
       setError(err.message || 'Failed to load slots');
       setSlots([]);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchSlotsAndBookings(selectedDate);
+    fetchSlotsAndBookings(selectedDate, true);
   }, [selectedDate, fetchSlotsAndBookings]);
 
   const handleDateChange = (e) => {
@@ -60,7 +76,23 @@ export function SlotsPage() {
       });
 
       setSuccess(response.message || 'Booking successful!');
-      await fetchSlotsAndBookings(selectedDate);
+
+      // Optimistically update local slot counts immediately
+      setSlots((prevSlots) =>
+        prevSlots.map((s) =>
+          s.id === slotId
+            ? {
+                ...s,
+                bookedCount: s.bookedCount + 1,
+                available: Math.max(0, s.available - 1)
+              }
+            : s
+        )
+      );
+      setUserBookedSlotIds((prev) => new Set([...prev, slotId]));
+
+      // Silent background sync
+      await fetchSlotsAndBookings(selectedDate, false);
     } catch (err) {
       if (err.status === 429) {
         setError('Too many booking attempts. Please try again later.');
@@ -132,9 +164,19 @@ export function SlotsPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             className="alert alert-error"
+            style={{ justifyContent: 'space-between' }}
           >
-            <AlertCircle className="w-5 h-5 flex-shrink-0" />
-            <span>{error}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setError('')}
+              style={{ background: 'none', border: 'none', color: 'currentColor', cursor: 'pointer', opacity: 0.8 }}
+            >
+              <X className="w-4 h-4" />
+            </button>
           </motion.div>
         )}
 
@@ -145,9 +187,19 @@ export function SlotsPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             className="alert alert-success"
+            style={{ justifyContent: 'space-between' }}
           >
-            <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-            <span>{success}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+              <span>{success}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSuccess('')}
+              style={{ background: 'none', border: 'none', color: 'currentColor', cursor: 'pointer', opacity: 0.8 }}
+            >
+              <X className="w-4 h-4" />
+            </button>
           </motion.div>
         )}
       </AnimatePresence>

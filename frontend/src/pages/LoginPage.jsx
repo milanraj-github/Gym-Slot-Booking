@@ -43,8 +43,10 @@ export function LoginPage() {
         });
         setFieldErrors(mapped);
         setError(err.message || 'Validation failed');
+      } else if (err.message && err.message.includes('fetch')) {
+        setError('Unable to connect to backend server. Please verify backend is running on port 3000.');
       } else {
-        setError(err.message || 'Login failed. Please check your credentials.');
+        setError(err.message || 'Login failed. Please check your email and password.');
       }
     } finally {
       setLoading(false);

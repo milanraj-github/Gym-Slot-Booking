@@ -5,7 +5,7 @@ import { User, Mail, Lock, UserPlus, CheckCircle2, AlertCircle, Dumbbell } from 
 import { useAuth } from '../context/AuthContext';
 
 export function RegisterPage() {
-  const { register } = useAuth();
+  const { register, login } = useAuth();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
@@ -36,11 +36,13 @@ export function RegisterPage() {
     setSuccess('');
 
     try {
+      // 1. Register account
       await register(formData.name, formData.email, formData.password);
-      setSuccess('Registration successful! Redirecting to login...');
-      setTimeout(() => {
-        navigate('/login');
-      }, 2000);
+      setSuccess('Registration successful! Logging you in...');
+
+      // 2. Automatically log in user and navigate to slots dashboard
+      await login(formData.email, formData.password);
+      navigate('/slots');
     } catch (err) {
       if (err.errors && Array.isArray(err.errors)) {
         const mapped = {};
@@ -49,6 +51,8 @@ export function RegisterPage() {
         });
         setFieldErrors(mapped);
         setError(err.message || 'Validation failed');
+      } else if (err.message && err.message.includes('fetch')) {
+        setError('Unable to connect to backend server. Please verify backend is running on port 3000.');
       } else {
         setError(err.message || 'Registration failed. Please try again.');
       }
@@ -70,7 +74,7 @@ export function RegisterPage() {
             <Dumbbell className="w-7 h-7" />
           </div>
           <h2>Create Account</h2>
-          <p className="auth-subtitle">Join Gym Slot Booking System today</p>
+          <p className="auth-subtitle">Join SlotGuard Gym System today</p>
         </div>
 
         <AnimatePresence>
@@ -172,7 +176,7 @@ export function RegisterPage() {
             ) : (
               <>
                 <UserPlus className="w-4 h-4" />
-                <span>Register</span>
+                <span>Register & Access Dashboard</span>
               </>
             )}
           </motion.button>
