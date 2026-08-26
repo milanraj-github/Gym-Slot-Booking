@@ -1,4 +1,5 @@
 import { Navigate, Outlet } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 
 export function ProtectedRoute() {
@@ -7,8 +8,12 @@ export function ProtectedRoute() {
   if (loading) {
     return (
       <div className="center-screen">
-        <div className="spinner"></div>
-        <p>Verifying authentication...</p>
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+          className="spinner"
+        />
+        <p className="text-muted font-medium">Verifying authentication session...</p>
       </div>
     );
   }
@@ -27,7 +32,7 @@ export function PublicOnlyRoute() {
     return (
       <div className="center-screen">
         <div className="spinner"></div>
-        <p>Loading...</p>
+        <p className="text-muted font-medium">Loading...</p>
       </div>
     );
   }

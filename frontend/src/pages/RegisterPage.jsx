@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { User, Mail, Lock, UserPlus, CheckCircle2, AlertCircle, Dumbbell } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export function RegisterPage() {
@@ -22,7 +24,6 @@ export function RegisterPage() {
       ...formData,
       [e.target.name]: e.target.value
     });
-    // Clear errors on edit
     setError('');
     setFieldErrors({});
   };
@@ -36,7 +37,7 @@ export function RegisterPage() {
 
     try {
       await register(formData.name, formData.email, formData.password);
-      setSuccess('Registration successful! You can now log in.');
+      setSuccess('Registration successful! Redirecting to login...');
       setTimeout(() => {
         navigate('/login');
       }, 2000);
@@ -58,68 +59,129 @@ export function RegisterPage() {
 
   return (
     <div className="auth-container">
-      <div className="auth-card">
-        <h2>Create an Account</h2>
-        <p className="auth-subtitle">Join Gym Slot Booking System today</p>
+      <motion.div
+        initial={{ opacity: 0, y: 24, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        className="glass-card auth-card"
+      >
+        <div className="auth-header">
+          <div className="auth-logo-badge">
+            <Dumbbell className="w-7 h-7" />
+          </div>
+          <h2>Create Account</h2>
+          <p className="auth-subtitle">Join Gym Slot Booking System today</p>
+        </div>
 
-        {error && <div className="alert alert-error">{error}</div>}
-        {success && <div className="alert alert-success">{success}</div>}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="alert alert-error mb-4"
+            >
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <span>{error}</span>
+            </motion.div>
+          )}
+
+          {success && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="alert alert-success mb-4"
+            >
+              <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+              <span>{success}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
             <label htmlFor="name">Full Name</label>
-            <input
-              type="text"
-              id="name"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              placeholder="e.g. Milan Raj"
-              required
-              disabled={loading}
-            />
+            <div className="input-wrapper">
+              <User className="w-4 h-4 input-icon" />
+              <input
+                type="text"
+                id="name"
+                name="name"
+                className="glass-input"
+                value={formData.name}
+                onChange={handleChange}
+                placeholder="e.g. Milan Raj"
+                required
+                disabled={loading}
+              />
+            </div>
             {fieldErrors.name && <span className="field-error">{fieldErrors.name}</span>}
           </div>
 
           <div className="form-group">
             <label htmlFor="email">Email Address</label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="e.g. milan@example.com"
-              required
-              disabled={loading}
-            />
+            <div className="input-wrapper">
+              <Mail className="w-4 h-4 input-icon" />
+              <input
+                type="email"
+                id="email"
+                name="email"
+                className="glass-input"
+                value={formData.email}
+                onChange={handleChange}
+                placeholder="e.g. milan@example.com"
+                required
+                disabled={loading}
+              />
+            </div>
             {fieldErrors.email && <span className="field-error">{fieldErrors.email}</span>}
           </div>
 
           <div className="form-group">
             <label htmlFor="password">Password</label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="Enter secure password"
-              required
-              disabled={loading}
-            />
+            <div className="input-wrapper">
+              <Lock className="w-4 h-4 input-icon" />
+              <input
+                type="password"
+                id="password"
+                name="password"
+                className="glass-input"
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="Enter secure password"
+                required
+                disabled={loading}
+              />
+            </div>
             {fieldErrors.password && <span className="field-error">{fieldErrors.password}</span>}
           </div>
 
-          <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-            {loading ? 'Creating Account...' : 'Register'}
-          </button>
+          <motion.button
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
+            type="submit"
+            className="btn btn-primary btn-block"
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <div className="spinner w-4 h-4 border-2" />
+                <span>Creating Account...</span>
+              </>
+            ) : (
+              <>
+                <UserPlus className="w-4 h-4" />
+                <span>Register</span>
+              </>
+            )}
+          </motion.button>
         </form>
 
         <div className="auth-footer">
           Already have an account? <Link to="/login">Log in here</Link>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

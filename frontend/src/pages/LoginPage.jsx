@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Mail, Lock, LogIn, AlertCircle, Dumbbell } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export function LoginPage() {
@@ -51,52 +53,98 @@ export function LoginPage() {
 
   return (
     <div className="auth-container">
-      <div className="auth-card">
-        <h2>Welcome Back</h2>
-        <p className="auth-subtitle">Log in to book your gym slots</p>
+      <motion.div
+        initial={{ opacity: 0, y: 24, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        className="glass-card auth-card"
+      >
+        <div className="auth-header">
+          <div className="auth-logo-badge">
+            <Dumbbell className="w-7 h-7" />
+          </div>
+          <h2>Welcome Back</h2>
+          <p className="auth-subtitle">Log in to book your reserved gym slots</p>
+        </div>
 
-        {error && <div className="alert alert-error">{error}</div>}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="alert alert-error mb-4"
+            >
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <span>{error}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
             <label htmlFor="email">Email Address</label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="e.g. milan@example.com"
-              required
-              disabled={loading}
-            />
+            <div className="input-wrapper">
+              <Mail className="w-4 h-4 input-icon" />
+              <input
+                type="email"
+                id="email"
+                name="email"
+                className="glass-input"
+                value={formData.email}
+                onChange={handleChange}
+                placeholder="e.g. milan@example.com"
+                required
+                disabled={loading}
+              />
+            </div>
             {fieldErrors.email && <span className="field-error">{fieldErrors.email}</span>}
           </div>
 
           <div className="form-group">
             <label htmlFor="password">Password</label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="Enter your password"
-              required
-              disabled={loading}
-            />
+            <div className="input-wrapper">
+              <Lock className="w-4 h-4 input-icon" />
+              <input
+                type="password"
+                id="password"
+                name="password"
+                className="glass-input"
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="Enter your password"
+                required
+                disabled={loading}
+              />
+            </div>
             {fieldErrors.password && <span className="field-error">{fieldErrors.password}</span>}
           </div>
 
-          <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-            {loading ? 'Logging in...' : 'Log In'}
-          </button>
+          <motion.button
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
+            type="submit"
+            className="btn btn-primary btn-block"
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <div className="spinner w-4 h-4 border-2" />
+                <span>Logging in...</span>
+              </>
+            ) : (
+              <>
+                <LogIn className="w-4 h-4" />
+                <span>Log In</span>
+              </>
+            )}
+          </motion.button>
         </form>
 
         <div className="auth-footer">
           Don't have an account yet? <Link to="/register">Register here</Link>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

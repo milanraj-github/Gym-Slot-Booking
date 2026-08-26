@@ -12,6 +12,12 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <div className="ambient-background">
+          <div className="glow-orb glow-orb-1" />
+          <div className="glow-orb glow-orb-2" />
+          <div className="glow-orb glow-orb-3" />
+        </div>
+
         <div className="app-layout">
           <Navbar />
           <main className="main-content">

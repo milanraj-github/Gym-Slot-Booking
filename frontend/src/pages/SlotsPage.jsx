@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Calendar, Clock, CheckCircle2, AlertCircle, Sparkles, Check, Flame } from 'lucide-react';
 import { apiFetch } from '../api/client';
 
 export function SlotsPage() {
@@ -14,11 +16,9 @@ export function SlotsPage() {
     setLoading(true);
     setError('');
     try {
-      // Fetch available slots for date
       const slotsData = await apiFetch(`/api/slots?date=${date}`);
       setSlots(slotsData.slots || []);
 
-      // Fetch user's active bookings to know which slots user already booked
       try {
         const bookingsData = await apiFetch('/api/bookings');
         const activeIds = new Set(
@@ -60,7 +60,6 @@ export function SlotsPage() {
       });
 
       setSuccess(response.message || 'Booking successful!');
-      // Refresh slots and user active bookings
       await fetchSlotsAndBookings(selectedDate);
     } catch (err) {
       if (err.status === 429) {
@@ -84,16 +83,37 @@ export function SlotsPage() {
     return `${formattedHours}:${minutes} ${ampm}`;
   };
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.08
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } }
+  };
+
   return (
     <div className="page-container">
       <div className="page-header">
-        <div>
-          <h1>Gym Available Slots</h1>
-          <p className="page-subtitle">Select a date to view remaining capacity and book your slot</p>
+        <div className="page-title-group">
+          <h1>
+            <Sparkles className="w-7 h-7 title-icon" />
+            <span>Gym Available Slots</span>
+          </h1>
+          <p className="page-subtitle">Select a date to view live remaining capacity and book your slot</p>
         </div>
 
-        <div className="date-picker-container">
-          <label htmlFor="slot-date">Select Date:</label>
+        <div className="date-picker-card">
+          <label htmlFor="slot-date">
+            <Calendar className="w-4 h-4 text-emerald" />
+            <span>Date:</span>
+          </label>
           <input
             type="date"
             id="slot-date"
@@ -104,38 +124,97 @@ export function SlotsPage() {
         </div>
       </div>
 
-      {error && <div className="alert alert-error">{error}</div>}
-      {success && <div className="alert alert-success">{success}</div>}
+      <AnimatePresence mode="wait">
+        {error && (
+          <motion.div
+            key="error-alert"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="alert alert-error"
+          >
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <span>{error}</span>
+          </motion.div>
+        )}
+
+        {success && (
+          <motion.div
+            key="success-alert"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="alert alert-success"
+          >
+            <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+            <span>{success}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {loading ? (
-        <div className="loading-state">
-          <div className="spinner"></div>
-          <p>Loading slots for {selectedDate}...</p>
+        <div className="slots-grid">
+          {[1, 2, 3, 4, 5].map((idx) => (
+            <div key={idx} className="skeleton-card" />
+          ))}
         </div>
       ) : slots.length === 0 ? (
-        <div className="empty-state">
-          <span className="empty-icon">📅</span>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="glass-card empty-state"
+        >
+          <div className="empty-icon-wrapper">
+            <Calendar className="w-8 h-8" />
+          </div>
           <h3>No slots available for this date</h3>
-          <p>Try selecting another date such as 2026-08-27.</p>
-        </div>
+          <p className="text-muted">Try selecting another date such as 2026-08-27.</p>
+        </motion.div>
       ) : (
-        <div className="slots-grid">
+        <motion.div
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+          className="slots-grid"
+        >
           {slots.map((slot) => {
             const isFull = slot.available === 0;
             const isAlreadyBooked = userBookedSlotIds.has(slot.id);
             const isBookingThis = bookingSlotId === slot.id;
             const isButtonDisabled = isFull || isAlreadyBooked || isBookingThis;
+            const capacityPercentage = Math.min(100, (slot.bookedCount / slot.capacity) * 100);
 
             return (
-              <div key={slot.id} className={`slot-card ${isFull ? 'full' : ''} ${isAlreadyBooked ? 'booked' : ''}`}>
-                <div className="slot-time">
-                  <span className="time-icon">⏰</span>
-                  <span className="time-text">
-                    {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
-                  </span>
+              <motion.div
+                key={slot.id}
+                variants={itemVariants}
+                whileHover={{ y: -4, transition: { duration: 0.2 } }}
+                className={`glass-card slot-card ${isFull ? 'full' : ''} ${isAlreadyBooked ? 'booked' : ''}`}
+              >
+                <div className="slot-card-accent-bar" />
+
+                <div className="slot-card-header">
+                  <div className="slot-time-badge">
+                    <Clock className="w-5 h-5 slot-time-icon" />
+                    <span>
+                      {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
+                    </span>
+                  </div>
+
+                  {isAlreadyBooked ? (
+                    <span className="status-badge confirmed">
+                      <Check className="w-3.5 h-3.5" /> Active
+                    </span>
+                  ) : isFull ? (
+                    <span className="status-badge cancelled">Full</span>
+                  ) : slot.available <= 3 ? (
+                    <span className="status-badge warning" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                      <Flame className="w-3.5 h-3.5" /> Filling Fast
+                    </span>
+                  ) : null}
                 </div>
 
-                <div className="slot-stats">
+                <div className="slot-stats-grid">
                   <div className="stat-item">
                     <span className="stat-label">Capacity</span>
                     <span className="stat-value">{slot.capacity}</span>
@@ -144,33 +223,64 @@ export function SlotsPage() {
                     <span className="stat-label">Booked</span>
                     <span className="stat-value">{slot.bookedCount}</span>
                   </div>
-                  <div className="stat-item highlight">
+                  <div className="stat-item">
                     <span className="stat-label">Available</span>
-                    <span className={`stat-value ${slot.available > 0 ? 'text-success' : 'text-danger'}`}>
+                    <span
+                      className={`stat-value ${
+                        slot.available > 3
+                          ? 'text-emerald'
+                          : slot.available > 0
+                          ? 'text-warning'
+                          : 'text-danger'
+                      }`}
+                    >
                       {slot.available}
                     </span>
                   </div>
                 </div>
 
+                <div className="slot-capacity-bar-bg">
+                  <div
+                    className={`slot-capacity-bar-fill ${isFull ? 'full' : ''}`}
+                    style={{ width: `${capacityPercentage}%` }}
+                  />
+                </div>
+
                 <div className="slot-action">
-                  <button
+                  <motion.button
+                    whileHover={!isButtonDisabled ? { scale: 1.02 } : {}}
+                    whileTap={!isButtonDisabled ? { scale: 0.98 } : {}}
                     onClick={() => handleBook(slot.id)}
-                    className={`btn btn-block ${isAlreadyBooked ? 'btn-secondary' : isFull ? 'btn-disabled' : 'btn-primary'}`}
+                    className={`btn btn-block ${
+                      isAlreadyBooked
+                        ? 'btn-secondary'
+                        : isFull
+                        ? 'btn-disabled'
+                        : 'btn-primary'
+                    }`}
                     disabled={isButtonDisabled}
                   >
-                    {isBookingThis
-                      ? 'Booking...'
-                      : isAlreadyBooked
-                      ? 'Already Booked'
-                      : isFull
-                      ? 'Full'
-                      : 'Book Slot'}
-                  </button>
+                    {isBookingThis ? (
+                      <>
+                        <div className="spinner w-4 h-4 border-2" />
+                        <span>Booking...</span>
+                      </>
+                    ) : isAlreadyBooked ? (
+                      <>
+                        <Check className="w-4 h-4 text-cyan" />
+                        <span>Already Booked</span>
+                      </>
+                    ) : isFull ? (
+                      <span>Slot Full</span>
+                    ) : (
+                      <span>Book Slot</span>
+                    )}
+                  </motion.button>
                 </div>
-              </div>
+              </motion.div>
             );
           })}
-        </div>
+        </motion.div>
       )}
     </div>
   );
