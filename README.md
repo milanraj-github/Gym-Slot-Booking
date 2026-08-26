@@ -1,6 +1,6 @@
 # 🏋️ Gym Slot Booking System
 
-A full-stack gym slot reservation system built with **React**, **Node.js / Express**, **PostgreSQL**, **MongoDB**, and **Redis**.
+A full-stack gym slot reservation system built with **React**, **Node.js + Express**, **PostgreSQL**, **MongoDB**, and **Redis**.
 
 This project demonstrates a multi-database architecture where **PostgreSQL** acts as the transactional source of truth for concurrency and capacity correctness, **MongoDB** serves as the secondary non-transactional store for audit logs and notification history, and **Redis** handles hot-read caching and booking rate limiting.
 
