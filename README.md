@@ -1,37 +1,28 @@
 # 🏋️ Gym Slot Booking System
 
-A full-stack gym slot reservation system built with **React**, **Node.js + Express**, **PostgreSQL**, **MongoDB**, and **Redis**.
+<p align="left">
+  <img src="https://img.shields.io/badge/React-19.0-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React" />
+  <img src="https://img.shields.io/badge/Node.js-20+-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node" />
+  <img src="https://img.shields.io/badge/Express.js-5.0-000000?style=flat-square&logo=express&logoColor=white" alt="Express" />
+  <img src="https://img.shields.io/badge/PostgreSQL-16.0-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/MongoDB-7.0-47A248?style=flat-square&logo=mongodb&logoColor=white" alt="MongoDB" />
+  <img src="https://img.shields.io/badge/Redis-7.0-DC382D?style=flat-square&logo=redis&logoColor=white" alt="Redis" />
+  <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker" />
+</p>
 
-This project demonstrates a multi-database architecture where **PostgreSQL** acts as the transactional source of truth for concurrency and capacity correctness, **MongoDB** serves as the secondary non-transactional store for audit logs and notification history, and **Redis** handles hot-read caching and booking rate limiting.
+A production-ready full-stack gym reservation platform designed to eliminate overbooking under heavy concurrent traffic. Built with **React 19**, **Node.js/Express 5**, **PostgreSQL 16**, **MongoDB 7**, **Redis 7**, and containerized infrastructure via **Docker Compose**.
 
----
-
-## 📋 Table of Contents
-
-- [Overview](#-overview)
-- [Assignment Compliance](#-assignment-compliance)
-- [System Architecture](#-system-architecture)
-- [Concurrency & Data Consistency](#-concurrency--data-consistency)
-- [Database Roles & Schemas](#-database-roles--schemas)
-- [API Documentation](#-api-documentation)
-- [Frontend Application](#-frontend-application)
-- [Setup & Local Execution Guide](#-setup--local-execution-guide)
-- [Verification & Testing](#-verification--testing)
-- [Project Directory Structure](#-project-directory-structure)
+This system implements a multi-database architecture where **PostgreSQL** serves as the transactional source of truth, **MongoDB** logs asynchronous audit trails and notification history, and **Redis** handles hot-read caching and booking rate limiting.
 
 ---
 
-## 🌟 Overview
+## 📌 Key Highlights
 
-The **Gym Slot Booking System** allows authenticated gym members to view daily slot schedules, check real-time available capacity, reserve slots, view personal booking history, and cancel active reservations.
-
-### Core Business Problem & Challenge
-Gym slots have a strict, limited capacity (10 members per slot). When multiple users attempt to book the final remaining slot simultaneously, traditional read-then-write logic leads to **race conditions** and **overbooking**.
-
-This system solves the overbooking problem at the database engine level using **PostgreSQL atomic conditional updates** and **partial unique indexes**, ensuring that even under high concurrent load:
-- **Zero overbooking** can ever occur (`booked_count <= capacity` is strictly enforced).
-- **Duplicate active bookings** for the same user and slot are rejected with `409 Conflict`.
-- **Non-blocking side effects** (Redis cache invalidation, MongoDB activity logging, and notification history) never compromise core transaction state.
+- **Concurrency-Safe Engine**: Employs PostgreSQL atomic conditional updates (`UPDATE ... WHERE booked_count < capacity`) inside serialized transactions to strictly enforce the 10-person slot capacity limit under high concurrent bursts.
+- **Dual-Database Architecture**: PostgreSQL functions as the ACID transactional source of truth; MongoDB handles asynchronous non-blocking activity logs (`activity_logs`) and notification history (`notification_history`).
+- **Low-Latency Read Path**: High-frequency slot availability queries are cached in Redis (`slot:{slotId}:available`) with immediate post-commit invalidation upon bookings or cancellations.
+- **Layered Service Architecture**: Strict separation of concerns (Routes → Middleware → Controllers → Database Clients).
+- **Graceful Lifecycle Management**: Clean connection pool draining, Redis teardown, fail-open cache resiliency, and centralized error sanitization.
 
 ---
 
@@ -42,7 +33,7 @@ This project fulfills all mandatory technology stack requirements:
 | Requirement | Implementation | Responsibility |
 | :--- | :--- | :--- |
 | **React.js** | React 19 + Vite + React Router v7 | Single Page Application (SPA) frontend UI |
-| **Node.js** | Node.js (v20+) runtime | Backend server environment |
+| **Node.js** | Node.js (v20+) runtime | Backend server runtime |
 | **Express.js** | Express REST API | Routing, controller logic, middleware pipeline |
 | **PostgreSQL** | PostgreSQL 16 (Docker) | Primary transactional database & authoritative source of truth |
 | **MongoDB** | MongoDB 7 (Docker) | Secondary non-transactional store (`activity_logs` & `notification_history`) |
@@ -57,7 +48,7 @@ This project fulfills all mandatory technology stack requirements:
 
 ---
 
-## 🏗️ System Architecture
+## 🏛 System Architecture
 
 ### Request Processing Pipeline
 
@@ -127,23 +118,71 @@ flowchart LR
 
 ---
 
-## 🔒 Concurrency & Data Consistency
+## 🔒 Concurrency Strategy & Race Condition Prevention
 
-### 1. Atomic Capacity Decrement (Overbooking Protection)
-To prevent overbooking when 25+ users book a slot with a capacity of 10 concurrently, capacity is updated directly within PostgreSQL using an atomic conditional update:
+### The Challenge
+When a gym slot has **1 spot remaining** (`booked_count = 9`, `capacity = 10`) and multiple users attempt to book at the exact same millisecond:
+- **Unsafe systems** read `booked_count = 9` across all threads simultaneously, approve all reservations, and overbook the slot to `12` or higher.
+- **Gym Slot Booking System** serializes write attempts at the database level using atomic conditional updates.
+
+### Execution Flow Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor UserA as User A
+    actor UserB as User B
+    participant DB as PostgreSQL (Transaction)
+    
+    UserA->>DB: BEGIN Transaction
+    UserB->>DB: BEGIN Transaction
+    
+    UserA->>DB: SELECT capacity, booked_count FROM gym_slots WHERE id = $1
+    UserB->>DB: SELECT capacity, booked_count FROM gym_slots WHERE id = $1
+    
+    UserA->>DB: UPDATE gym_slots SET booked_count = booked_count + 1 WHERE id = $1 AND booked_count < capacity
+    Note over DB: User A update succeeds (9 -> 10). 1 Row Affected.
+    
+    UserA->>DB: INSERT INTO bookings (user_id, slot_id, status) VALUES (...)
+    UserA->>DB: COMMIT Transaction
+    Note over UserA,DB: User A receives HTTP 201 Created
+    
+    UserB->>DB: UPDATE gym_slots SET booked_count = booked_count + 1 WHERE id = $1 AND booked_count < capacity
+    Note over DB: Capacity check fails (10 < 10 is FALSE). 0 Rows Affected.
+    
+    UserB->>DB: ROLLBACK Transaction
+    Note over UserB,DB: User B rejected with HTTP 409 Conflict (SLOT_FULL)
+```
+
+### SQL Transaction Implementation
 
 ```sql
+BEGIN;
+
+-- 1. Verify slot exists and fetch capacity
+SELECT id, capacity, booked_count FROM gym_slots WHERE id = $1;
+
+-- 2. Verify active booking does not already exist for user
+SELECT id FROM bookings WHERE user_id = $2 AND slot_id = $1 AND status = 'confirmed';
+
+-- 3. Atomically increment booked_count IF capacity permits
 UPDATE gym_slots
 SET booked_count = booked_count + 1
 WHERE id = $1
   AND booked_count < capacity
 RETURNING booked_count;
+
+-- If 0 rows returned => ROLLBACK & return HTTP 409 Conflict ("SLOT_FULL")
+
+-- 4. Record confirmed booking
+INSERT INTO bookings (user_id, slot_id, status)
+VALUES ($2, $1, 'confirmed');
+
+COMMIT;
 ```
 
-If `booked_count` has reached `capacity`, `UPDATE` returns 0 affected rows. The transaction immediately executes `ROLLBACK` and responds with `409 Conflict` (`SLOT_FULL`).
-
-### 2. Partial Unique Index (Duplicate Active Booking Prevention)
-To ensure a user cannot hold multiple active bookings for the same slot while allowing re-booking if a previous booking was cancelled, a partial unique index is enforced in PostgreSQL:
+### Duplicate Active Booking Prevention
+A partial unique index at the PostgreSQL level enforces that a single user cannot hold multiple confirmed reservations for the same slot:
 
 ```sql
 CREATE UNIQUE INDEX uq_active_booking_per_user_slot
@@ -151,80 +190,65 @@ ON bookings (user_id, slot_id)
 WHERE status = 'confirmed';
 ```
 
-If a user submits a concurrent duplicate request, PostgreSQL rejects the second `INSERT` with code `23505`, triggering an automatic transaction rollback.
-
-### 3. Row Locking on Cancellation
-Booking cancellation uses row-level locking (`FOR UPDATE`) to prevent race conditions during concurrent cancellation attempts:
-
-```sql
-BEGIN;
-SELECT id, user_id, slot_id, status FROM bookings WHERE id = $1 FOR UPDATE;
-UPDATE bookings SET status = 'cancelled', cancelled_at = NOW() WHERE id = $1 AND status = 'confirmed';
-UPDATE gym_slots SET booked_count = booked_count - 1 WHERE id = $2 AND booked_count > 0;
-COMMIT;
-```
-
-### Verification Test Results
-Under stress testing with **25 simultaneous user booking requests** against a slot with capacity **10**:
-- **10 requests** succeeded (`201 Created`).
-- **15 requests** were rejected (`409 Conflict`, `SLOT_FULL`).
-- Final PostgreSQL `booked_count` = **10 / 10**.
-- Overbooking instances = **0**.
-
 ---
 
-## 🗄️ Database Roles & Schemas
+## 🗃 Database Roles & Schemas
 
 ### 1. PostgreSQL (Transactional Source of Truth)
 
-- **`users` Table**:
-  - `id` (UUID, Primary Key)
-  - `name` (VARCHAR)
-  - `email` (VARCHAR, Unique)
-  - `password_hash` (VARCHAR)
-  - `role` (VARCHAR, default `'member'`)
-  - `created_at` (TIMESTAMPTZ)
+```
+users (id, name, email, password_hash, role, created_at)
+  │
+  ├──< bookings (id, user_id, slot_id, status, booked_at, cancelled_at)
+  │
+gym_slots (id, slot_date, start_time, end_time, capacity, booked_count, created_at)
+```
 
-- **`gym_slots` Table**:
-  - `id` (UUID, Primary Key)
-  - `slot_date` (DATE)
-  - `start_time` (TIME)
-  - `end_time` (TIME)
-  - `capacity` (INTEGER, default 10)
-  - `booked_count` (INTEGER, default 0, `CHECK (booked_count <= capacity)`)
-  - `created_at` (TIMESTAMPTZ)
+| Table | Primary Key | Key Columns & Indexes | Description |
+| :--- | :--- | :--- | :--- |
+| `users` | `id` (UUID) | `email` (UNIQUE) | User identity and password credentials |
+| `gym_slots` | `id` (UUID) | `slot_date`, `start_time`, `booked_count` | Gym slots (Default capacity: 10, `CHECK (booked_count <= capacity)`) |
+| `bookings` | `id` (UUID) | `uq_active_booking_per_user_slot` partial index | Reservation records (`confirmed` or `cancelled`) |
 
-- **`bookings` Table**:
-  - `id` (UUID, Primary Key)
-  - `user_id` (UUID, Foreign Key -> `users.id`)
-  - `slot_id` (UUID, Foreign Key -> `gym_slots.id`)
-  - `status` (VARCHAR, `'confirmed'` | `'cancelled'`)
-  - `booked_at` (TIMESTAMPTZ)
-  - `cancelled_at` (TIMESTAMPTZ, Nullable)
+---
 
-### 2. MongoDB (Non-Transactional Audit & History)
+### 2. MongoDB (Audit & Activity Collections)
 
-- **`activity_logs` Collection** (`backend/src/models/mongo/activityLog.js`):
-  - `userId` (String)
-  - `action` (String: `'booking_created'` | `'booking_cancelled'`)
-  - `slotId` (String)
-  - `timestamp` (Date)
-  - `metadata` (`{ ip, userAgent }`)
+#### `activity_logs` Collection (`backend/src/models/mongo/activityLog.js`)
+```json
+{
+  "_id": "ObjectId('6a8e03c348f509ee228c044d')",
+  "userId": "d994d73f-0f6b-4699-9c09-bcf04d507203",
+  "action": "booking_created",
+  "slotId": "3818c0c1-1dd7-4faf-ab13-c5874d43eb8d",
+  "timestamp": "2026-08-26T12:00:00.000Z",
+  "metadata": {
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0..."
+  }
+}
+```
 
-- **`notification_history` Collection** (`backend/src/models/mongo/notification.js`):
-  - `userId` (String)
-  - `channel` (String: `'email'` | `'push'`)
-  - `message` (String)
-  - `sentAt` (Date)
-  - `status` (String: `'sent'` | `'failed'`)
+#### `notification_history` Collection (`backend/src/models/mongo/notification.js`)
+```json
+{
+  "_id": "ObjectId('6a8e03c348f509ee228c044e')",
+  "userId": "d994d73f-0f6b-4699-9c09-bcf04d507203",
+  "channel": "email",
+  "message": "Your gym slot booking was confirmed.",
+  "sentAt": "2026-08-26T12:00:00.000Z",
+  "status": "sent"
+}
+```
+
+---
 
 ### 3. Redis (Caching & Rate Limiting)
 
 - **Slot Availability Cache**:
   - Key Pattern: `slot:{slotId}:available`
-  - Value: Remaining integer capacity
   - Strategy: Cache-Aside with 10s TTL, invalidated (`DEL`) immediately post-commit on bookings/cancellations.
-  - Fail-Open: If Redis is offline, system queries PostgreSQL directly.
+  - Fail-Open: If Redis is offline, queries gracefully fall back to PostgreSQL.
 
 - **Booking Rate Limiter**:
   - Key Pattern: `ratelimit:booking:{userId}`
@@ -234,361 +258,155 @@ Under stress testing with **25 simultaneous user booking requests** against a sl
 
 ---
 
-## 📡 API Documentation
+## ⚡ Redis Caching & Invalidation Flow
+
+- **Cache-Aside Pattern**: `GET /api/slots?date=YYYY-MM-DD` checks Redis key `slot:{slotId}:available` before querying PostgreSQL.
+- **TTL**: Keys expire automatically after 10 seconds.
+- **Write Invalidation**: Upon any successful booking or cancellation, `slot:{slotId}:available` is invalidated immediately.
+- **Resilience**: If Redis experiences latency or outage, queries automatically fall back to PostgreSQL without disrupting user operations.
+
+---
+
+## 📡 REST API Reference
 
 ### Base URL
 `http://localhost:3000/api`
 
----
+### Endpoints
 
-### Authentication Endpoints
-
-#### 1. Register User
-`POST /api/auth/register`
-
-- **Request Body**:
-  ```json
-  {
-    "name": "John Doe",
-    "email": "john@example.com",
-    "password": "Password123"
-  }
-  ```
-- **Response (201 Created)**:
-  ```json
-  {
-    "message": "Registration successful",
-    "user": {
-      "id": "d994d73f-0f6b-4699-9c09-bcf04d507203",
-      "name": "John Doe",
-      "email": "john@example.com",
-      "role": "member"
-    }
-  }
-  ```
-- **Error Responses**: `400 Bad Request` (Validation error), `409 Conflict` (`Email already in use`).
-
-#### 2. User Login
-`POST /api/auth/login`
-
-- **Request Body**:
-  ```json
-  {
-    "email": "john@example.com",
-    "password": "Password123"
-  }
-  ```
-- **Response (200 OK)**:
-  ```json
-  {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "user": {
-      "id": "d994d73f-0f6b-4699-9c09-bcf04d507203",
-      "name": "John Doe",
-      "email": "john@example.com",
-      "role": "member"
-    }
-  }
-  ```
-- **Error Responses**: `400 Bad Request`, `401 Unauthorized` (`Invalid email or password`).
-
-#### 3. Get Current User Profile
-`GET /api/auth/me`
-- **Headers**: `Authorization: Bearer <token>`
-- **Response (200 OK)**:
-  ```json
-  {
-    "user": {
-      "id": "d994d73f-0f6b-4699-9c09-bcf04d507203",
-      "name": "John Doe",
-      "email": "john@example.com",
-      "role": "member"
-    }
-  }
-  ```
-
----
-
-### Slot Endpoints
-
-#### 4. Get Available Gym Slots
-`GET /api/slots?date=YYYY-MM-DD`
-- **Headers**: `Authorization: Bearer <token>`
-- **Response (200 OK)**:
-  ```json
-  {
-    "date": "2026-08-27",
-    "slots": [
-      {
-        "id": "3818c0c1-1dd7-4faf-ab13-c5874d43eb8d",
-        "date": "2026-08-27",
-        "startTime": "06:00:00",
-        "endTime": "07:00:00",
-        "capacity": 10,
-        "bookedCount": 3,
-        "available": 7
-      }
-    ]
-  }
-  ```
-- **Error Responses**: `400 Bad Request` (Invalid date format), `401 Unauthorized`.
-
----
-
-### Booking Endpoints
-
-#### 5. Book a Gym Slot
-`POST /api/bookings`
-- **Headers**: `Authorization: Bearer <token>`
-- **Request Body**:
-  ```json
-  {
-    "slotId": "3818c0c1-1dd7-4faf-ab13-c5874d43eb8d"
-  }
-  ```
-- **Response (201 Created)**:
-  ```json
-  {
-    "message": "Booking successful",
-    "booking": {
-      "id": "96b20280-4d13-4730-8686-fa5ffc0f70fd",
-      "userId": "d994d73f-0f6b-4699-9c09-bcf04d507203",
-      "slotId": "3818c0c1-1dd7-4faf-ab13-c5874d43eb8d",
-      "status": "confirmed",
-      "bookedAt": "2026-08-26T12:00:00.000Z"
-    }
-  }
-  ```
-- **Error Responses**:
-  - `400 Bad Request`: Invalid slotId format.
-  - `401 Unauthorized`: Missing or invalid JWT.
-  - `404 Not Found`: Slot does not exist.
-  - `409 Conflict`: `You already have a booking for this slot`.
-  - `409 Conflict`: `{"message": "Slot is full", "code": "SLOT_FULL"}`.
-  - `429 Too Many Requests`: Rate limit exceeded.
-
-#### 6. Get My Bookings History
-`GET /api/bookings`
-- **Headers**: `Authorization: Bearer <token>`
-- **Response (200 OK)**:
-  ```json
-  {
-    "bookings": [
-      {
-        "id": "96b20280-4d13-4730-8686-fa5ffc0f70fd",
-        "slotId": "3818c0c1-1dd7-4faf-ab13-c5874d43eb8d",
-        "slotDate": "2026-08-27",
-        "startTime": "06:00:00",
-        "endTime": "07:00:00",
-        "status": "confirmed",
-        "bookedAt": "2026-08-26T12:00:00.000Z",
-        "cancelledAt": null
-      }
-    ]
-  }
-  ```
-
-#### 7. Cancel Booking
-`DELETE /api/bookings/:id`
-- **Headers**: `Authorization: Bearer <token>`
-- **Response (200 OK)**:
-  ```json
-  {
-    "message": "Booking cancelled successfully"
-  }
-  ```
-- **Error Responses**:
-  - `400 Bad Request`: Invalid UUID parameter.
-  - `403 Forbidden`: `You are not authorized to cancel this booking`.
-  - `404 Not Found`: Booking ID does not exist.
-  - `409 Conflict`: `Booking is already cancelled`.
+| Method | Route | Description | Auth |
+| :--- | :--- | :--- | :---: |
+| `POST` | `/api/auth/register` | Register new member account | No |
+| `POST` | `/api/auth/login` | Authenticate credentials and receive Bearer JWT | No |
+| `GET` | `/api/auth/me` | Fetch authenticated user profile | **Yes** |
+| `GET` | `/api/slots?date=YYYY-MM-DD` | List slots with live capacity meters (Cached) | **Yes** |
+| `POST` | `/api/bookings` | Reserve a gym slot (Row-locked, Rate-limited) | **Yes** |
+| `GET` | `/api/bookings` | Retrieve booking history of authenticated user | **Yes** |
+| `DELETE` | `/api/bookings/:id` | Cancel reservation & restore slot capacity | **Yes** |
 
 ---
 
 ## 💻 Frontend Application
 
-The frontend is built as a single-page application using **React 19**, **Vite**, and **React Router v7**.
+The frontend is a single-page application built with **React 19**, **Vite**, and **React Router v7**.
 
-### Key Features & Design
-- **Route Protection**: `ProtectedRoute` guards `/slots` and `/bookings`. `PublicOnlyRoute` redirects logged-in users away from `/login` and `/register`.
-- **Session Restoration**: Automatically validates stored JWT on app startup via `GET /api/auth/me`.
-- **Real-Time Capacity Feedback**: Displays real-time `Capacity`, `Booked Count`, and `Available Count` badges for each slot.
-- **Action Safeguards**: "Book Slot" buttons automatically disable when slots are full (`available === 0`) or when the user already holds an active booking for that slot.
-- **Cancellation Flow**: Confirmed bookings provide an interactive confirmation modal before executing cancellation.
+### Key Pages & Features
+- **`/login` & `/register`**: Authenticated forms with validation error feedback and JWT session management.
+- **`/slots`**: Interactive date picker, real-time `Capacity`, `Booked`, and `Available` counters. "Book Slot" buttons dynamically disable when slots are full (`available === 0`) or when the user holds an active reservation.
+- **`/bookings`**: Personal booking history displaying active/cancelled badges, timestamps, and confirmation modal dialogs for cancellation.
+- **Route Guards**: `ProtectedRoute` protects `/slots` and `/bookings`; `PublicOnlyRoute` redirects logged-in users away from auth pages.
 
 ---
 
-## ⚙️ Setup & Local Execution Guide
+## 🛠 Local Setup & Execution Guide
 
 ### Prerequisites
-- **Node.js**: v20 or higher
-- **npm**: v10 or higher
-- **Docker Desktop**: Docker engine running locally
+- [Docker Desktop](https://www.docker.com/) (running locally)
+- [Node.js](https://nodejs.org/) (v20+)
+- [npm](https://www.npmjs.com/) (v10+)
 
----
+### 1. Clone Repository
+```bash
+git clone https://github.com/manyapatkar974/GYM_SLOT.git
+cd GYM_SLOT
+```
 
-### Step 1: Start Docker Infrastructure Services
-
-Start PostgreSQL, MongoDB, and Redis containers in detached mode:
-
+### 2. Start Infrastructure Services
+Launch PostgreSQL, MongoDB, and Redis in isolated Docker containers:
 ```bash
 docker compose up -d
 ```
 
-Verify all 3 containers are healthy and running:
-
+Verify infrastructure container status:
 ```bash
 docker compose ps
 ```
+*Expected output: `gym-postgres` (healthy), `gym-mongo` (Up), `gym-redis` (Up).*
 
-*Expected Output:*
+### 3. Backend Setup
+```bash
+cd backend
+npm install
+
+# Create local environment file
+cat <<EOT > .env
+DATABASE_URL=postgres://gymuser:gympassword@localhost:5432/gymbooking
+MONGO_URL=mongodb://localhost:27017/gymbooking
+REDIS_URL=redis://localhost:6379
+JWT_SECRET=gymbooking_jwt_secret_key_2026_super_secure
+PORT=3000
+EOT
+
+# Seed initial gym slots (for 2026-08-27)
+node src/seed/seedSlots.js
+
+# Start backend server
+npm start
 ```
-NAME           IMAGE                STATUS
-gym-mongo      mongo:7              Up
-gym-postgres   postgres:16-alpine   Up (healthy)
-gym-redis      redis:7-alpine       Up
+*Backend runs on `http://localhost:3000`.*
+
+### 4. Frontend Setup
+In a new terminal window:
+```bash
+cd frontend
+npm install
+
+# Create local environment file
+cat <<EOT > .env
+VITE_API_BASE_URL=http://localhost:3000
+EOT
+
+# Start Vite dev server
+npm run dev
+```
+*Frontend runs on `http://localhost:5173`.*
+
+---
+
+## 🧪 Concurrency Stress Testing & Verification
+
+The repository was stress-tested under high concurrent load with **25 simultaneous user booking requests** against a slot with capacity **10**.
+
+```
+📊 Concurrent Request Execution Results (25 Concurrent Users -> Capacity 10):
+┌─────────┬──────────────────────┬─────────┬─────────────────────────────────┐
+│ Status  │     HTTP Code        │ Count   │            Outcome              │
+├─────────┼──────────────────────┼─────────┼─────────────────────────────────┤
+│ SUCCESS │ 201 Created          │   10    │ Bookings Confirmed              │
+│ REJECTED│ 409 Conflict         │   15    │ SLOT_FULL Code Returned         │
+└─────────┴──────────────────────┴─────────┴─────────────────────────────────┘
+
+🔍 Database Integrity Verification:
+   - Expected Confirmed Bookings: 10 | Actual in PostgreSQL: 10
+   - Slot Booked Count in Database: 10 / 10
+   - Overbooking Instances: 0
+
+✅ TEST PASSED: Zero overbooking detected. Database-level concurrency control verified!
 ```
 
 ---
 
-### Step 2: Configure and Start Backend
+## ⚖️ Design Decisions & Trade-offs
 
-1. Navigate to the `backend` directory:
-   ```bash
-   cd backend
-   ```
-
-2. Install Node.js dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Create local environment file `.env`:
-   ```env
-   DATABASE_URL=postgres://gymuser:gympassword@localhost:5432/gymbooking
-   MONGO_URL=mongodb://localhost:27017/gymbooking
-   REDIS_URL=redis://localhost:6379
-   JWT_SECRET=gymbooking_jwt_secret_key_2026_super_secure
-   PORT=3000
-   ```
-
-4. Seed the initial gym slots for testing:
-   ```bash
-   node src/seed/seedSlots.js
-   ```
-
-5. Start the Express backend server:
-   ```bash
-   npm start
-   ```
-   *Output:* `Server running on port 3000`
+| Decision | Rationale | Trade-off |
+| :--- | :--- | :--- |
+| **Native `pg` Pool over ORM** | Guarantees direct control over explicit transaction lifecycle and atomic SQL queries without ORM abstraction overhead. | Requires writing clean parameterized SQL queries instead of ORM methods. |
+| **Dual Database Pattern** | Decouples high-volume audit logging (MongoDB) from transactional operations (PostgreSQL). | Maintains two database instances locally via Docker. |
+| **Atomic Conditional Updates** | Guarantees strict serialization under peak booking load without complex application retry loops. | Requires careful SQL error handling on 0 affected rows. |
+| **Non-Blocking Side Effects** | Redis cache invalidation, MongoDB logs, and notification history execute post-commit. | Side-effect failures do not roll back successful PostgreSQL booking transactions. |
 
 ---
 
-### Step 3: Configure and Start Frontend
+## 📈 Scalability to 100x Traffic
 
-1. Open a new terminal and navigate to `frontend`:
-   ```bash
-   cd frontend
-   ```
-
-2. Install frontend dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Create local environment file `.env`:
-   ```env
-   VITE_API_BASE_URL=http://localhost:3000
-   ```
-
-4. Start the Vite development server:
-   ```bash
-   npm run dev
-   ```
-
-5. Open your browser at `http://localhost:5173`.
+To scale this platform for enterprise production loads:
+1. **Stateless API Clustering**: Deploy multiple Node.js/Express API instances behind an Application Load Balancer (ALB / NGINX).
+2. **PostgreSQL Read Replicas & Connection Pooling**: Deploy **PgBouncer** to pool database connections and direct read-only queries to PostgreSQL read replicas.
+3. **Distributed Redis Cluster**: Shard Redis availability cache and rate-limit counters across a multi-node Redis Cluster.
+4. **Asynchronous Message Queue**: Offload post-commit MongoDB audit logging and notification distribution to a dedicated queue worker (BullMQ / RabbitMQ).
 
 ---
 
-## 🧪 Verification & Testing
+## 📄 License
 
-The system has been verified through automated integration tests and manual browser testing across 15 execution steps:
-
-- **Auth & Security**: Verified bcrypt hashing, 401 unauthorized errors, duplicate email conflicts (409), role elevation blocking, and JWT user isolation.
-- **Concurrency & Overbooking**: Verified 25 simultaneous booking attempts against capacity 10 resulted in exactly 10 successes and 15 rejections with 0 overbooking.
-- **Cancellation & Row Locking**: Verified concurrent cancellations decrement `booked_count` exactly once and enforce ownership (403).
-- **Cache & Resiliency**: Verified Redis cache invalidation on booking/cancellation, Redis rate limiting (10 req/min), and non-blocking fallback when Redis/MongoDB are temporarily offline.
-- **Database Consistency Audit**: Verified `booked_count == COUNT(bookings WHERE status = 'confirmed')` 100% across all database slots.
-
----
-
-## 📁 Project Directory Structure
-
-```
-gym-slot-booking/
-├── docker-compose.yml          # Infrastructure configuration (PostgreSQL, MongoDB, Redis)
-├── README.md                   # Project documentation & reference
-├── .gitignore
-│
-├── backend/                    # Node.js + Express Backend
-│   ├── .env.example
-│   ├── package.json
-│   └── src/
-│       ├── app.js              # Express app setup & middleware mounting
-│       ├── server.js           # Server listener & database initialization
-│       ├── config/
-│       │   ├── mongo.js        # Mongoose connection
-│       │   ├── postgres.js     # PostgreSQL pg pool client
-│       │   └── redis.js        # ioredis client
-│       ├── controllers/
-│       │   ├── authController.js    # Register, login, getMe
-│       │   ├── bookingController.js # Create booking, cancel booking, get my bookings
-│       │   └── slotController.js    # Get slots (Cache-Aside)
-│       ├── db/
-│       │   └── migrations/     # PostgreSQL SQL schema migrations (001 - 004)
-│       ├── middleware/
-│       │   ├── authMiddleware.js      # JWT Bearer verification
-│       │   ├── bookingRateLimiter.js  # Redis fixed-window rate limiter
-│       │   ├── errorHandler.js        # Centralized Express error handler
-│       │   ├── notFound.js            # 404 unknown route handler
-│       │   └── validate.js            # Joi validation middleware
-│       ├── models/
-│       │   └── mongo/
-│       │       ├── activityLog.js     # Mongoose ActivityLog schema
-│       │       └── notification.js    # Mongoose Notification schema
-│       ├── routes/
-│       │   ├── authRoutes.js
-│       │   ├── bookingRoutes.js
-│       │   └── slotRoutes.js
-│       ├── seed/
-│       │   └── seedSlots.js           # Seed script for 5 gym slots
-│       └── utils/
-│           ├── AppError.js            # Custom operational error class
-│           ├── jwt.js                 # JWT sign and verify helpers
-│           ├── notificationService.js # Simulated non-blocking notification side-effects
-│           └── validationSchemas.js   # Joi schemas for endpoints
-│
-└── frontend/                   # React + Vite Frontend
-    ├── .env.example
-    ├── index.html
-    ├── package.json
-    ├── vite.config.js
-    └── src/
-        ├── App.css
-        ├── App.jsx             # Router layout & route definitions
-        ├── index.css           # Global CSS design system
-        ├── main.jsx            # React root mount
-        ├── api/
-        │   └── client.js       # Centralized API fetch wrapper with JWT attachment
-        ├── components/
-        │   ├── Navbar.jsx      # Header navigation bar & user state
-        │   └── ProtectedRoute.jsx # Route protection guards
-        ├── context/
-        │   └── AuthContext.jsx # Authentication state provider
-        └── pages/
-            ├── LoginPage.jsx        # Login page
-            ├── RegisterPage.jsx     # Registration page
-            ├── SlotsPage.jsx        # Slots booking page
-            └── MyBookingsPage.jsx   # Booking history & cancellation page
-```
+This project is open-source and available under the [ISC License](LICENSE).
