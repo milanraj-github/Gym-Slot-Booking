@@ -647,20 +647,6 @@ docker compose ps
 
 ---
 
-## 20. Video Walkthrough & Presentation Flow
-
-For a 5–10 minute demonstration, use the following sequence:
-
-1. **System Architecture Overview (1 min)**: Highlight multi-database separation (PostgreSQL, MongoDB, Redis) and Docker setup.
-2. **Infrastructure Launch (1 min)**: Run `docker compose up -d` and `docker compose ps` in terminal.
-3. **User Registration & Login (1.5 min)**: Demonstrate account creation (`/register`), password hashing, login (`/login`), and JWT issuance.
-4. **Slot Schedule & Availability (1.5 min)**: Select date (`/slots`), view slots, explain Redis Cache-Aside strategy.
-5. **Booking Execution & Capacity Increment (1.5 min)**: Reserve slot, demonstrate capacity decrement in UI and PostgreSQL table.
-6. **Booking History & Cancellation (1.5 min)**: Navigate to `/bookings`, execute cancellation, demonstrate capacity restoration.
-7. **Concurrency Explanation & Stress Test Results (2 min)**: Explain PostgreSQL atomic conditional updates, show partial unique index, and review 25-user stress test results (0 overbooking).
-
----
-
-## 21. License
+## 20. License
 
 This project is open-source and available under the [ISC License](LICENSE).
