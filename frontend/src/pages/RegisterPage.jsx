@@ -11,7 +11,8 @@ export function RegisterPage() {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    password: ''
+    password: '',
+    confirmPassword: ''
   });
 
   const [loading, setLoading] = useState(false);
@@ -34,6 +35,14 @@ export function RegisterPage() {
     setError('');
     setFieldErrors({});
     setSuccess('');
+
+    // Verify confirm password match
+    if (formData.password !== formData.confirmPassword) {
+      setFieldErrors({ confirmPassword: 'Passwords do not match' });
+      setError('Passwords do not match. Please re-enter your password.');
+      setLoading(false);
+      return;
+    }
 
     try {
       // 1. Register account
@@ -159,6 +168,27 @@ export function RegisterPage() {
               />
             </div>
             {fieldErrors.password && <span className="field-error">{fieldErrors.password}</span>}
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="confirmPassword">Confirm Password</label>
+            <div className="input-wrapper">
+              <Lock className="w-4 h-4 input-icon" />
+              <input
+                type="password"
+                id="confirmPassword"
+                name="confirmPassword"
+                className="glass-input"
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                placeholder="Re-enter password to confirm"
+                required
+                disabled={loading}
+              />
+            </div>
+            {fieldErrors.confirmPassword && (
+              <span className="field-error">{fieldErrors.confirmPassword}</span>
+            )}
           </div>
 
           <motion.button
