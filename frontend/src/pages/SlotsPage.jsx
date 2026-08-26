@@ -150,6 +150,10 @@ export function SlotsPage() {
             type="date"
             id="slot-date"
             className="date-input"
+            min={(() => {
+              const d = new Date();
+              return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            })()}
             value={selectedDate}
             onChange={handleDateChange}
           />
